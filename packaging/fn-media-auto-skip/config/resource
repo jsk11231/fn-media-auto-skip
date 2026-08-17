@@ -1,0 +1,9 @@
+{
+  "port-config": {
+    "protocol-file": "fn-media-auto-skip.sc"
+  },
+  "data-share": {
+    "shares": []
+  },
+  "systemd-unit": {}
+}

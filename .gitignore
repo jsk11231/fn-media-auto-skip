@@ -1,0 +1,53 @@
+HELP.md
+.gradle
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!**/src/main/**/bin/
+!**/src/test/**/bin/
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+out/
+!**/src/main/**/out/
+!**/src/test/**/out/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+/data/
+/logs/
+/fly-narwhal-web/logs/
+/fly-narwhal-web/src/main/resources/updater/
+
+### Local credentials and runtime artifacts ###
+.env
+.env.*
+!.env.example
+*.log
+*.db
+*.mv.db
+*.trace.db
+*.fpk
+*.zip
+/packaging/edge-profile/

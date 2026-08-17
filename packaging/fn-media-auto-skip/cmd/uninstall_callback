@@ -1,0 +1,5 @@
+#!/bin/bash
+if [ "${wizard_delete_data}" = "true" ] && [ -n "${TRIM_PKGVAR}" ] && [ -d "${TRIM_PKGVAR}" ]; then
+  find "${TRIM_PKGVAR}" -mindepth 1 -delete
+fi
+exit 0

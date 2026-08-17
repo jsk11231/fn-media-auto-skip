@@ -1,0 +1,16 @@
+appname         = fn-media-auto-skip
+version         = 1.0.5
+display_name    = 飞牛影视自动跳过
+platform        = all
+maintainer      = FN Media Auto Skip Contributors
+maintainer_url  = https://github.com/FNOSP/fly-narwhal-server
+distributor     = FN Media Auto Skip Contributors
+distributor_url = https://github.com/FNOSP/fly-narwhal-server
+desktop_uidir   = ui
+desktop_applaunchname = fn-media-auto-skip.Application
+service_port    = 5366
+install_dep_apps = java-21-openjdk
+beta            = yes
+desc            = 自动分析飞牛影视剧集的片头片尾，并通过官方接口保存整季跳过设置。默认只生成建议，不自动覆盖。
+source          = thirdparty
+checksum        =

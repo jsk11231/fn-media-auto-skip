@@ -1,0 +1,17 @@
+[
+  {
+    "stepTitle": "卸载飞牛影视自动跳过",
+    "items": [
+      {
+        "type": "radio",
+        "field": "wizard_delete_data",
+        "label": "是否删除分析记录和连接设置？",
+        "initValue": "false",
+        "options": [
+          {"label": "保留配置和分析记录", "value": "false"},
+          {"label": "同时删除全部应用数据", "value": "true"}
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>飞牛影视 · 自动跳过</title>
+  <link rel="stylesheet" href="/autoskip.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">FN MEDIA AUTO SKIP</p>
+        <h1>让每一季，都自动跳过片头片尾</h1>
+        <p class="subtitle">多集音频指纹比对、黑场检测与保守聚合。默认只生成建议，不会改动官方设置。</p>
+      </div>
+      <div id="connectionPill" class="pill muted">尚未连接</div>
+    </header>
+
+    <section class="grid two">
+      <article class="card">
+        <div class="card-title">
+          <div><span class="step">01</span><h2>连接飞牛影视</h2></div>
+          <span id="capabilityText" class="micro">正在检测分析能力…</span>
+        </div>
+        <form id="connectForm" class="form-grid">
+          <label class="wide">飞牛地址<input id="baseUrl" autocomplete="url" placeholder="https://你的飞牛地址:端口" required><small>兼容 fnOS 局域网自签名证书；请确认地址属于你自己的飞牛设备。</small></label>
+          <label>用户名<input id="username" autocomplete="username" required></label>
+          <label>密码<input id="password" type="password" autocomplete="current-password" placeholder="仅加密保存在本机" required></label>
+          <button class="primary wide" type="submit">测试并保存连接</button>
+        </form>
+      </article>
+
+      <article class="card">
+        <div class="card-title"><div><span class="step">02</span><h2>自动化策略</h2></div></div>
+        <form id="settingsForm" class="settings">
+          <label class="switch-row"><span><b>自动应用高置信度结果</b><small>关闭时只生成建议值</small></span><input id="autoApply" type="checkbox"><i></i></label>
+          <label class="switch-row"><span><b>覆盖已有手动设置</b><small>建议保持关闭</small></span><input id="overwriteExisting" type="checkbox"><i></i></label>
+          <label class="switch-row"><span><b>定时扫描新入库剧集</b><small>只处理尚未完成的剧季</small></span><input id="scheduledScan" type="checkbox"><i></i></label>
+          <div class="numbers">
+            <label>扫描间隔（小时）<input id="scanIntervalHours" type="number" min="1" max="168"></label>
+            <label>最少样本集数<input id="minimumEpisodes" type="number" min="2" max="20"></label>
+            <label>一致率阈值<input id="consensusThreshold" type="number" min="0.5" max="1" step="0.05"></label>
+            <label>允许误差（秒）<input id="toleranceSeconds" type="number" min="2" max="30"></label>
+          </div>
+          <button class="secondary" type="submit">保存策略</button>
+        </form>
+      </article>
+    </section>
+
+    <section class="card scan-card">
+      <div class="scan-copy">
+        <div class="card-title"><div><span class="step">03</span><h2>扫描与分析</h2></div></div>
+        <p id="scanStage">等待扫描</p>
+        <div class="stats"><span>发现 <b id="discovered">0</b> 季</span><span>加入队列 <b id="queued">0</b> 季</span></div>
+        <p id="scanError" class="error hidden"></p>
+      </div>
+      <div class="actions">
+        <button id="scanButton" class="primary">扫描未处理剧季</button>
+        <button id="forceScanButton" class="ghost">重新分析全部</button>
+      </div>
+    </section>
+
+    <section class="card results">
+      <div class="card-title result-heading">
+        <div><span class="step">04</span><h2>剧季建议</h2></div>
+        <span id="seasonCount" class="micro">0 个剧季</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>节目</th><th>状态</th><th>片头</th><th>片尾</th><th>一致率</th><th>说明</th><th></th></tr></thead>
+          <tbody id="seasonRows"><tr><td class="empty" colspan="7">连接后点击扫描，分析结果会显示在这里。</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>V1 · 只读分析媒体文件，通过飞牛影视官方接口保存设置。建议首次使用先关闭自动应用。</footer>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script src="/autoskip.js"></script>
+</body>
+</html>

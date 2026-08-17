@@ -1,0 +1,28 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.1' apply false
+    id 'io.spring.dependency-management' version '1.1.7' apply false
+}
+
+ext {
+    baseVersion = '1.0.5'
+    versionSuffix = ''.toString().trim()
+    normalizedVersionSuffix = versionSuffix
+        ? ((versionSuffix.startsWith('-') || versionSuffix.startsWith('+')) ? versionSuffix : "-${versionSuffix}")
+        : ''
+}
+
+allprojects {
+    group = 'com.jankinwu'
+    version = rootProject.ext.baseVersion + rootProject.ext.normalizedVersionSuffix
+    ext.baseVersion = rootProject.ext.baseVersion
+    ext.versionSuffix = rootProject.ext.versionSuffix
+
+    repositories {
+        mavenCentral()
+    }
+    
+    tasks.withType(JavaCompile) {
+        options.encoding = 'UTF-8'
+    }
+}

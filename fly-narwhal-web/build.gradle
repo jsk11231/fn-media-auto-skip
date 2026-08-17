@@ -1,0 +1,281 @@
+import java.security.MessageDigest
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot'
+    id 'io.spring.dependency-management'
+}
+
+dependencies {
+    implementation project(':fly-narwhal-core')
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    implementation 'com.baomidou:mybatis-plus-spring-boot3-starter:3.5.9'
+    implementation 'org.mapstruct:mapstruct:1.5.5.Final'
+    runtimeOnly 'com.h2database:h2'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    annotationProcessor 'org.mapstruct:mapstruct-processor:1.5.5.Final'
+    annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+bootJar {
+    archiveFileName = "fn-media-auto-skip-${project.version}.jar"
+}
+
+def generatedVersionSrcDir = layout.buildDirectory.dir("generated/sources/version/java")
+
+tasks.register('generateVersionConfig') {
+    outputs.dir(generatedVersionSrcDir)
+    outputs.upToDateWhen { false }
+    doLast {
+        def dir = generatedVersionSrcDir.get().asFile
+        def packagePath = new File(dir, "com/jankinwu/flynarwhal/web/config")
+        packagePath.mkdirs()
+
+        def buildTime = OffsetDateTime.now(ZoneOffset.ofHours(8)).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        def baseVersion = project.ext.baseVersion?.toString() ?: project.version.toString()
+        def version = project.version.toString()
+        def buildAuthxVerifier = "1".equals(System.getenv("FLY_NARWHAL_BUILD_AUTHX_VERIFIER"))
+
+        def file = new File(packagePath, "BuildVersionConfiguration.java")
+        file.text =
+            "package com.jankinwu.flynarwhal.web.config;\n" +
+            "\n" +
+            "import org.springframework.context.annotation.Bean;\n" +
+            "import org.springframework.context.annotation.Configuration;\n" +
+            "\n" +
+            "@Configuration\n" +
+            "public class BuildVersionConfiguration {\n" +
+            "    public static final String VERSION = \"" + version + "\";\n" +
+            "    public static final String BASE_VERSION = \"" + baseVersion + "\";\n" +
+            "    public static final String BUILD_TIME = \"" + buildTime + "\";\n" +
+            "    public static final boolean BUILD_AUTHX_VERIFIER = " + buildAuthxVerifier + ";\n" +
+            "\n" +
+            "    @Bean\n" +
+            "    public BuildVersionInfo buildVersionInfo() {\n" +
+            "        return new BuildVersionInfo(VERSION, BASE_VERSION, BUILD_TIME);\n" +
+            "    }\n" +
+            "\n" +
+            "    public static final class BuildVersionInfo {\n" +
+            "        private final String version;\n" +
+            "        private final String baseVersion;\n" +
+            "        private final String buildTime;\n" +
+            "\n" +
+            "        public BuildVersionInfo(String version, String baseVersion, String buildTime) {\n" +
+            "            this.version = version;\n" +
+            "            this.baseVersion = baseVersion;\n" +
+            "            this.buildTime = buildTime;\n" +
+            "        }\n" +
+            "\n" +
+            "        public String getVersion() {\n" +
+            "            return version;\n" +
+            "        }\n" +
+            "\n" +
+            "        public String getBaseVersion() {\n" +
+            "            return baseVersion;\n" +
+            "        }\n" +
+            "\n" +
+            "        public String getBuildTime() {\n" +
+            "            return buildTime;\n" +
+            "        }\n" +
+            "    }\n" +
+            "}\n"
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir(generatedVersionSrcDir)
+        }
+    }
+}
+
+tasks.named('compileJava') {
+    dependsOn(tasks.named('generateVersionConfig'))
+}
+
+def externalAuthxEnabled = (project.findProperty("externalAuthx")?.toString()?.toBoolean() ?: false) || "1".equals(System.getenv("FLY_NARWHAL_BUILD_AUTHX_VERIFIER"))
+def authxVerifierDirEnv = System.getenv("FLY_NARWHAL_AUTHX_VERIFIER_DIR")
+def authxVerifierSrcDir = authxVerifierDirEnv ? file(authxVerifierDirEnv) : null
+def authxVerifierWorkDir = layout.buildDirectory.dir("authx-verifier/work")
+def authxVerifierResDir = layout.buildDirectory.dir("generated-resources/authx-verifier")
+def execOps = project.services.get(ExecOperations)
+def fsOps = project.services.get(FileSystemOperations)
+
+def updaterSrcDir = rootProject.file("fly-narwhal-updater")
+def updaterResDir = layout.buildDirectory.dir("generated-resources/updater")
+
+def md5Hex = { String input ->
+    def md = MessageDigest.getInstance("MD5")
+    def digest = md.digest(input.getBytes("UTF-8"))
+    return digest.collect { String.format("%02x", it) }.join("")
+}
+
+tasks.register('buildUpdaterBinaries') {
+    onlyIf { updaterSrcDir != null && updaterSrcDir.exists() }
+    outputs.dir(updaterResDir)
+    doLast {
+        def outDir = new File(updaterResDir.get().asFile, "updater")
+        outDir.mkdirs()
+
+        execOps.exec {
+            workingDir(updaterSrcDir)
+            def currentPath = System.getenv("PATH")
+            def basePath = "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+            environment("PATH", (currentPath == null || currentPath.trim().isEmpty()) ? basePath : (currentPath + ":" + basePath))
+            environment("OUTPUT_DIR", outDir.absolutePath)
+            commandLine("/bin/bash", "./build.sh")
+        }
+
+        def expected = [
+            "updater-linux-amd64",
+            "updater-linux-aarch64"
+        ]
+        for (def name : expected) {
+            def bin = new File(outDir, name.toString())
+            if (!bin.exists()) {
+                throw new GradleException("Missing updater binary: " + bin.absolutePath)
+            }
+            bin.setExecutable(true)
+        }
+    }
+}
+
+tasks.register('prepareAuthxVerifier') {
+    onlyIf { externalAuthxEnabled && authxVerifierSrcDir != null && authxVerifierSrcDir.exists() }
+    doLast {
+        def workDir = authxVerifierWorkDir.get().asFile
+        if (workDir.exists()) {
+            workDir.deleteDir()
+        }
+        fsOps.copy {
+            from(authxVerifierSrcDir)
+            into(workDir)
+        }
+
+        def secret = System.getenv("FLY_NARWHAL_API_SECRET")
+        if (secret == null || secret.trim().isEmpty()) {
+            throw new GradleException("FLY_NARWHAL_API_SECRET is required when building authx verifier binaries")
+        }
+
+        execOps.exec {
+            workingDir(workDir)
+            environment("AUTHX_SECRET", secret.trim())
+            commandLine("go", "run", "./cmd/gensecret")
+        }
+    }
+}
+
+tasks.register('buildAuthxVerifierBinaries') {
+    onlyIf { externalAuthxEnabled && authxVerifierSrcDir != null && authxVerifierSrcDir.exists() }
+    dependsOn(tasks.named('prepareAuthxVerifier'))
+    doLast {
+        def workDir = authxVerifierWorkDir.get().asFile
+        def outRoot = new File(authxVerifierResDir.get().asFile, "native/authx")
+        def targets = [
+            [os: "linux", arch: "amd64", ext: ""],
+            [os: "linux", arch: "arm64", ext: ""],
+            [os: "darwin", arch: "amd64", ext: ""],
+            [os: "darwin", arch: "arm64", ext: ""],
+            [os: "windows", arch: "amd64", ext: ".exe"],
+            [os: "windows", arch: "arm64", ext: ".exe"]
+        ]
+
+        for (def t : targets) {
+            def classifier = "${t.os}-${t.arch}".toString()
+            def outDir = new File(outRoot, classifier)
+            outDir.mkdirs()
+            def outFile = new File(outDir, "flynarwhal-authx${t.ext}".toString())
+
+            execOps.exec {
+                workingDir(workDir)
+                environment("CGO_ENABLED", "0")
+                environment("GOOS", t.os)
+                environment("GOARCH", t.arch)
+                commandLine("go", "build", "-tags", "secretgen", "-trimpath", "-ldflags", "-s -w", "-o", outFile.absolutePath, "./cmd/verifier")
+            }
+        }
+    }
+}
+
+tasks.register('verifyAuthxVerifierBinary') {
+    onlyIf { externalAuthxEnabled && authxVerifierSrcDir != null && authxVerifierSrcDir.exists() }
+    dependsOn(tasks.named('buildAuthxVerifierBinaries'))
+    doLast {
+        def secret = System.getenv("FLY_NARWHAL_API_SECRET")
+        if (secret == null || secret.trim().isEmpty()) {
+            throw new GradleException("FLY_NARWHAL_API_SECRET is required when verifying authx verifier binaries")
+        }
+
+        def now = System.currentTimeMillis().toString()
+        def nonce = "123456"
+        def url = "/api/danmu/ping"
+        def dataMd5 = md5Hex("")
+        def signStr = ["NDzZTVxnRKP8Z0jXg1VAMonaG8akvh", url, nonce, now, dataMd5, secret.trim()].join("_")
+        def sign = md5Hex(signStr)
+        def authx = "nonce=${nonce}&timestamp=${now}&sign=${sign}"
+        def publicKey = "dummy-public-key"
+        def signxStr = [now, nonce, sign, dataMd5, url, publicKey].join("_")
+        def signx = MessageDigest.getInstance("SHA-256")
+            .digest(signxStr.getBytes("UTF-8"))
+            .collect { String.format("%02x", it) }
+            .join("")
+
+        def os = System.getProperty("os.name", "").toLowerCase()
+        def arch = System.getProperty("os.arch", "").toLowerCase()
+        def osPart = os.contains("linux") ? "linux" : (os.contains("mac") || os.contains("darwin")) ? "darwin" : os.contains("windows") ? "windows" : "unknown"
+        def archPart = (arch.contains("aarch64") || arch.contains("arm64")) ? "arm64" : (arch.contains("x86_64") || arch.contains("amd64") || arch.contains("x64")) ? "amd64" : "unknown"
+        def ext = osPart == "windows" ? ".exe" : ""
+
+        def bin = new File(authxVerifierResDir.get().asFile, "native/authx/${osPart}-${archPart}/flynarwhal-authx${ext}".toString())
+        if (!bin.exists()) {
+            throw new GradleException("Missing authx verifier binary: " + bin.absolutePath)
+        }
+        bin.setExecutable(true)
+
+        execOps.exec {
+            commandLine(
+                bin.absolutePath,
+                "--authx", authx,
+                "--url", url,
+                "--data-md5", dataMd5,
+                "--signx", signx,
+                "--public-key", publicKey
+            )
+        }
+    }
+}
+
+tasks.named('processResources') {
+    dependsOn(tasks.named('buildUpdaterBinaries'))
+    from(updaterResDir) {
+        into("")
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    }
+    if (externalAuthxEnabled && authxVerifierSrcDir != null && authxVerifierSrcDir.exists()) {
+        dependsOn(tasks.named('buildAuthxVerifierBinaries'))
+        from(authxVerifierResDir) {
+            into("")
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        }
+    }
+}
+
+tasks.named('bootJar') {
+    dependsOn(tasks.named('buildUpdaterBinaries'))
+}
+
+tasks.matching { it.name == "bootRun" }.configureEach {
+    dependsOn(tasks.named('buildUpdaterBinaries'))
+}

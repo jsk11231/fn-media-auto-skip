@@ -1,0 +1,67 @@
+#!/bin/bash
+
+PID_FILE="${TRIM_PKGVAR}/fn-media-auto-skip.pid"
+LOG_FILE="${TRIM_PKGVAR}/fn-media-auto-skip.log"
+JAR_FILE="${TRIM_APPDEST}/server/fn-media-auto-skip.jar"
+JAVA_BIN="/var/apps/java-21-openjdk/target/bin/java"
+PORT="${TRIM_SERVICE_PORT:-5366}"
+
+export PATH="/var/apps/java-21-openjdk/target/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
+export LANG="en_US.UTF-8"
+export LANGUAGE="en_US:en"
+export LC_ALL="en_US.UTF-8"
+
+is_running() {
+  [ -f "${PID_FILE}" ] || return 1
+  local pid
+  pid=$(cat "${PID_FILE}" 2>/dev/null)
+  [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null
+}
+
+case "$1" in
+  start)
+    if is_running; then
+      exit 0
+    fi
+    mkdir -p "${TRIM_PKGVAR}"
+    if [ ! -x "${JAVA_BIN}" ]; then
+      echo "启动失败：找不到可执行的 Java 21：${JAVA_BIN}" >> "${LOG_FILE}"
+      exit 1
+    fi
+    if [ ! -r "${JAR_FILE}" ]; then
+      echo "启动失败：找不到应用文件：${JAR_FILE}" >> "${LOG_FILE}"
+      exit 1
+    fi
+    cd "${TRIM_PKGVAR}" || exit 1
+    nohup "${JAVA_BIN}" -jar "${JAR_FILE}" --server.port="${PORT}" >> "${LOG_FILE}" 2>&1 &
+    echo $! > "${PID_FILE}"
+    sleep 2
+    is_running
+    exit $?
+    ;;
+  stop)
+    if is_running; then
+      pid=$(cat "${PID_FILE}")
+      kill -TERM "${pid}" 2>/dev/null || true
+      for _ in $(seq 1 20); do
+        kill -0 "${pid}" 2>/dev/null || break
+        sleep 1
+      done
+      kill -KILL "${pid}" 2>/dev/null || true
+    fi
+    rm -f "${PID_FILE}"
+    exit 0
+    ;;
+  status)
+    if is_running; then
+      echo "飞牛影视自动跳过正在运行"
+      exit 0
+    fi
+    echo "飞牛影视自动跳过未运行"
+    exit 3
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|status}"
+    exit 1
+    ;;
+esac
