@@ -64,7 +64,12 @@
     <section class="card results">
       <div class="card-title result-heading">
         <div><span class="step">04</span><h2>剧季建议</h2></div>
-        <span id="seasonCount" class="micro">0 个剧季</span>
+        <div class="result-actions">
+          <label class="threshold-filter">最低一致率 <span><input id="bulkThreshold" type="number" min="0" max="100" step="1" value="80"><b>%</b></span></label>
+          <label class="qualified-only"><input id="onlyQualified" type="checkbox">仅看达标</label>
+          <button id="bulkApplyButton" class="primary" type="button" disabled>一键应用达标项</button>
+          <span id="seasonCount" class="micro">0 个剧季</span>
+        </div>
       </div>
       <div class="table-wrap">
         <table>

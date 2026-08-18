@@ -44,6 +44,15 @@ public class AutoSkipController {
         return AutoSkipModels.ApiResponse.ok(autoSkipService.apply(seasonGuid, force), null);
     }
 
+    @PostMapping("/apply-bulk")
+    public AutoSkipModels.ApiResponse<AutoSkipModels.BulkApplyResult> applyBulk(
+            @RequestBody AutoSkipModels.BulkApplyRequest request) {
+        AutoSkipModels.BulkApplyResult result = autoSkipService.applyBulk(request.getMinimumPercent());
+        String message = "批量应用完成：已应用 " + result.getApplied() + " 季，跳过 "
+                + result.getSkipped() + " 季，失败 " + result.getFailed() + " 季";
+        return AutoSkipModels.ApiResponse.ok(message, result);
+    }
+
     @ExceptionHandler(Exception.class)
     public AutoSkipModels.ApiResponse<Void> handleException(Exception exception) {
         String message = exception.getMessage();

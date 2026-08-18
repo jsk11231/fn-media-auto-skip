@@ -25,6 +25,24 @@ function statusLabel(status) {
   return ({PREPARING:"准备中",PENDING:"排队中",IN_PROGRESS:"分析中",PARTIAL_SUCCESS:"部分完成",COMPLETED:"已完成",FAILED:"失败",UNKNOWN:"未知"})[status] || status;
 }
 
+function selectedThreshold() {
+  const input = $("bulkThreshold");
+  const value = Math.max(0, Math.min(100, Math.round(Number(input.value) || 0)));
+  input.value = value;
+  return value;
+}
+
+function confidencePercent(suggestion) {
+  if (Number.isFinite(suggestion.consensusPercent)) return suggestion.consensusPercent;
+  return Math.round(Math.max(suggestion.introConsensus || 0, suggestion.endingConsensus || 0) * 100);
+}
+
+function isQualified(suggestion, threshold = selectedThreshold()) {
+  const completed = ["COMPLETED","PARTIAL_SUCCESS"].includes(suggestion.analysisStatus);
+  const hasSuggestion = (suggestion.skipOpening || 0) > 0 || (suggestion.skipEnding || 0) > 0;
+  return completed && hasSuggestion && confidencePercent(suggestion) >= threshold;
+}
+
 function render(data) {
   dashboard = data;
   $("baseUrl").value = data.baseUrl || $("baseUrl").value;
@@ -44,13 +62,21 @@ function render(data) {
   $("scanError").classList.toggle("hidden", !data.scan.lastError);
 
   const seasons = data.seasons || [];
-  $("seasonCount").textContent = `${seasons.length} 个剧季`;
+  const threshold = selectedThreshold();
+  const qualified = seasons.filter(s => isQualified(s, threshold));
+  const visibleSeasons = $("onlyQualified").checked ? qualified : seasons;
+  $("seasonCount").textContent = `达标 ${qualified.length} / 共 ${seasons.length} 季`;
+  $("bulkApplyButton").disabled = !data.configured || qualified.length === 0;
   if (!seasons.length) {
     $("seasonRows").innerHTML = '<tr><td class="empty" colspan="7">连接后点击扫描，分析结果会显示在这里。</td></tr>';
     return;
   }
-  $("seasonRows").innerHTML = seasons.map(s => {
-    const confidence = Math.round(Math.max(s.introConsensus || 0, s.endingConsensus || 0) * 100);
+  if (!visibleSeasons.length) {
+    $("seasonRows").innerHTML = `<tr><td class="empty" colspan="7">没有一致率达到 ${threshold}% 且可应用的剧季。</td></tr>`;
+    return;
+  }
+  $("seasonRows").innerHTML = visibleSeasons.map(s => {
+    const confidence = confidencePercent(s);
     const canApply = ["COMPLETED","PARTIAL_SUCCESS"].includes(s.analysisStatus);
     const active = ["PENDING","IN_PROGRESS"].includes(s.analysisStatus);
     const displayPercent = active ? (s.progressPercent || 0) : confidence;
@@ -122,6 +148,40 @@ async function applySeason(button) {
     await refresh();
   } catch (error) { toast(error.message, true); button.disabled = false; }
 }
+
+async function applyQualified() {
+  const threshold = selectedThreshold();
+  const eligible = (dashboard?.seasons || []).filter(s => isQualified(s, threshold));
+  if (!eligible.length) {
+    toast(`没有一致率达到 ${threshold}% 的可应用剧季`, true);
+    return;
+  }
+  const existingPolicy = dashboard?.overwriteExisting ? "会覆盖已有手动设置" : "不会覆盖已有手动设置";
+  if (!confirm(`将一键应用 ${eligible.length} 个剧季（一致率 ≥ ${threshold}%），${existingPolicy}。继续吗？`)) return;
+
+  const button = $("bulkApplyButton");
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "应用中…";
+  try {
+    const result = await api("/api/autoskip/apply-bulk", {
+      method:"POST",
+      body:JSON.stringify({minimumPercent:threshold})
+    });
+    const failures = result.data?.failures || [];
+    toast(result.message + (failures.length ? `；首个失败：${failures[0]}` : ""), failures.length > 0);
+    await refresh();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    button.textContent = originalText;
+    if (dashboard) render(dashboard);
+  }
+}
+
+$("bulkThreshold").addEventListener("change", () => dashboard && render(dashboard));
+$("onlyQualified").addEventListener("change", () => dashboard && render(dashboard));
+$("bulkApplyButton").addEventListener("click", applyQualified);
 
 refresh(false);
 setInterval(() => refresh(true), 5000);
