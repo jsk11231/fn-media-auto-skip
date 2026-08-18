@@ -7,6 +7,7 @@ import com.jankinwu.flynarwhal.core.danmu.repository.DanmuUrlRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.brotli.dec.BrotliInputStream;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -48,6 +49,12 @@ public class DanmuAppService {
     private final ObjectMapper objectMapper;
     @Nullable
     private final DanmuUrlRepository danmuUrlRepository;
+
+    @Value("${danmu.douban.api-key:}")
+    private String doubanApiKey;
+
+    @Value("${danmu.douban.wechat-app-id:}")
+    private String doubanWechatAppId;
 
     public Object getDanmu(
             String doubanId,
@@ -404,7 +411,12 @@ public class DanmuAppService {
 
     private List<String> searchByDouban(String name, String tvNum, boolean season) {
         try {
-            String apiKey = "0ac44ae016490db2204ce0a042db2916";
+            String apiKey = doubanApiKey == null ? "" : doubanApiKey.trim();
+            String wechatAppId = doubanWechatAppId == null ? "" : doubanWechatAppId.trim();
+            if (apiKey.isEmpty() || !wechatAppId.matches("[A-Za-z0-9_-]{6,64}")) {
+                log.debug("Douban search disabled because its optional credentials are not configured");
+                return Collections.emptyList();
+            }
             String q = URLEncoder.encode(name, StandardCharsets.UTF_8);
             String url = "https://frodo.douban.com/api/v2/search/weixin?q=" + q + "&start=0&count=20&apiKey=" + apiKey;
 
@@ -415,7 +427,7 @@ public class DanmuAppService {
             headers.put("sec-fetch-site", "cross-site");
             headers.put("sec-fetch-mode", "cors");
             headers.put("sec-fetch-dest", "empty");
-            headers.put("referer", "https://servicewechat.com/wx2f9b06c1de1ccfca/99/page-frame.html");
+            headers.put("referer", "https://servicewechat.com/" + wechatAppId + "/99/page-frame.html");
             headers.put(HttpHeaders.ACCEPT_LANGUAGE, "zh-CN,zh;q=0.9");
             headers.put(HttpHeaders.ACCEPT_ENCODING, "identity");
 

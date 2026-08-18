@@ -35,3 +35,8 @@ logging:
 
 fly-narwhal:
   api-secret: ${FLY_NARWHAL_API_SECRET:16CCEB3D-AB42-077D-36A1-F355324E4237}
+
+danmu:
+  douban:
+    api-key: ${DOUBAN_API_KEY:}
+    wechat-app-id: ${DOUBAN_WECHAT_APP_ID:}
