@@ -1,0 +1,134 @@
+package com.jankinwu.flynarwhal.web.aspect;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.aspectj.lang.ProceedingJoinPoint;
+import org.aspectj.lang.annotation.Around;
+import org.aspectj.lang.annotation.Aspect;
+import org.aspectj.lang.annotation.Pointcut;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Web接口日志切面，记录请求参数和响应结果
+ */
+@Aspect
+@Component
+@Slf4j
+public class WebLoggingAspect {
+
+    private final ObjectMapper objectMapper;
+
+    public WebLoggingAspect(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 切入点：controller 包及其子包下的所有方法
+     */
+    @Pointcut("execution(* com.jankinwu.flynarwhal.web.controller..*.*(..))")
+    public void controllerPointcut() {}
+
+    @Around("controllerPointcut()")
+    public Object doAround(ProceedingJoinPoint joinPoint) throws Throwable {
+        long startTime = System.currentTimeMillis();
+
+        ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+        HttpServletRequest request = attributes != null ? attributes.getRequest() : null;
+
+        String method = request != null ? request.getMethod() : "UNKNOWN";
+        String uri = request != null ? request.getRequestURI() : "UNKNOWN";
+        String className = joinPoint.getTarget().getClass().getSimpleName();
+        String methodName = joinPoint.getSignature().getName();
+        Object[] args = joinPoint.getArgs();
+
+        // 记录请求日志
+        try {
+            log.info("Request: [{} {}] {}.{}() | Args: {}", 
+                    method, uri, className, methodName, objectMapper.writeValueAsString(sanitizeArgs(args)));
+        } catch (Exception e) {
+            log.warn("Failed to serialize request args: {}", e.getMessage());
+            log.info("Request: [{} {}] {}.{}()", method, uri, className, methodName);
+        }
+
+        Object result = null;
+        try {
+            result = joinPoint.proceed();
+            return result;
+        } finally {
+            long duration = System.currentTimeMillis() - startTime;
+            // 记录响应日志
+            try {
+                Object summary = summarizeResult(uri, result);
+                log.info("Response: [{} {}] {}.{}() | Time: {}ms | Result: {}", 
+                        method, uri, className, methodName, duration, objectMapper.writeValueAsString(summary));
+            } catch (Exception e) {
+                log.warn("Failed to serialize response result: {}", e.getMessage());
+                log.info("Response: [{} {}] {}.{}() | Time: {}ms", method, uri, className, methodName, duration);
+            }
+        }
+    }
+
+    private Object[] sanitizeArgs(Object[] args) {
+        if (args == null) {
+            return null;
+        }
+        return Arrays.stream(args).map(this::sanitizeArg).toArray();
+    }
+
+    private Object sanitizeArg(Object arg) {
+        if (arg == null) {
+            return null;
+        }
+        if (arg instanceof HttpServletRequest request) {
+            return new RequestInfo(request.getMethod(), request.getRequestURI());
+        }
+        if (arg instanceof HttpServletResponse) {
+            return HttpServletResponse.class.getSimpleName();
+        }
+        return arg;
+    }
+
+    private Object summarizeResult(String uri, Object result) {
+        if (uri != null && uri.startsWith("/danmu/")) {
+            return summarizeContainer(result);
+        }
+        return result;
+    }
+
+    private Object summarizeContainer(Object result) {
+        if (result == null) {
+            return null;
+        }
+        if (result instanceof String s) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", "String");
+            m.put("length", s.length());
+            m.put("sample", s.substring(0, Math.min(200, s.length())));
+            return m;
+        }
+        if (result instanceof List<?> list) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", "List");
+            m.put("size", list.size());
+            return m;
+        }
+        if (result instanceof Map<?, ?> map) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("type", "Map");
+            m.put("keys", map.keySet());
+            return m;
+        }
+        return Map.of("type", result.getClass().getSimpleName());
+    }
+
+    private record RequestInfo(String method, String uri) {}
+}

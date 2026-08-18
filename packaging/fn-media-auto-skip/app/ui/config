@@ -1,0 +1,14 @@
+{
+  ".url": {
+    "fn-media-auto-skip.Application": {
+      "title": "飞牛影视自动跳过",
+      "desc": "自动分析并设置片头片尾",
+      "icon": "images/{0}.png",
+      "type": "iframe",
+      "port": "5366",
+      "protocol": "http",
+      "url": "/",
+      "allUsers": false
+    }
+  }
+}
