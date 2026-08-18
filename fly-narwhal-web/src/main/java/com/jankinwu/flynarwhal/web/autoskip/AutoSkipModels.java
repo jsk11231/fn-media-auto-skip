@@ -30,6 +30,21 @@ public final class AutoSkipModels {
     }
 
     @Data
+    public static class BulkApplyRequest {
+        private int minimumPercent = 80;
+    }
+
+    @Data
+    @NoArgsConstructor
+    public static class BulkApplyResult {
+        private int eligible;
+        private int applied;
+        private int skipped;
+        private int failed;
+        private List<String> failures = new ArrayList<>();
+    }
+
+    @Data
     @AllArgsConstructor
     public static class ApiResponse<T> {
         private boolean success;
@@ -90,6 +105,7 @@ public final class AutoSkipModels {
         private int skipEnding;
         private double introConsensus;
         private double endingConsensus;
+        private int consensusPercent;
         private String progressStage = "";
         private int progressCompleted;
         private int progressTotal;

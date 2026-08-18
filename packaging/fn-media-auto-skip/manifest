@@ -1,5 +1,5 @@
 appname         = fn-media-auto-skip
-version         = 1.0.5
+version         = 1.0.6
 display_name    = 飞牛影视自动跳过
 platform        = all
 maintainer      = FN Media Auto Skip Contributors

@@ -111,6 +111,44 @@ public class AutoSkipService {
         return applyStatuses.getOrDefault(seasonGuid, "已处理");
     }
 
+    public AutoSkipModels.BulkApplyResult applyBulk(int minimumPercent) {
+        if (!configStore.isConfigured()) {
+            throw new IllegalStateException("请先连接飞牛影视");
+        }
+        if (minimumPercent < 0 || minimumPercent > 100) {
+            throw new IllegalArgumentException("最低一致率必须在 0 到 100 之间");
+        }
+
+        List<AutoSkipModels.SeasonSuggestion> eligible = tvSeasonInfoMapper.selectList(null).stream()
+                .map(this::buildSuggestion)
+                .filter(suggestion -> isBulkEligible(suggestion, minimumPercent))
+                .toList();
+        AutoSkipModels.BulkApplyResult result = new AutoSkipModels.BulkApplyResult();
+        result.setEligible(eligible.size());
+        if (eligible.isEmpty()) {
+            return result;
+        }
+
+        String token = freshToken();
+        for (AutoSkipModels.SeasonSuggestion suggestion : eligible) {
+            try {
+                if (applySuggestion(suggestion, false, token)) {
+                    result.setApplied(result.getApplied() + 1);
+                } else {
+                    result.setSkipped(result.getSkipped() + 1);
+                }
+            } catch (Exception exception) {
+                result.setFailed(result.getFailed() + 1);
+                String failure = suggestion.getTvTitle() + " 第 " + suggestion.getSeasonNumber()
+                        + " 季：" + safeMessage(exception);
+                result.getFailures().add(failure);
+                applyStatuses.put(suggestion.getSeasonGuid(), "写入失败：" + safeMessage(exception));
+                log.error("批量应用跳过设置失败: {}", suggestion.getSeasonGuid(), exception);
+            }
+        }
+        return result;
+    }
+
     @EventListener
     public void afterAnalysis(SeasonAnalysisCompletedEvent event) {
         try {
@@ -305,6 +343,7 @@ public class AutoSkipService {
         result.setSkipEnding(ending.safe ? conservativeSeconds(ending.median) : 0);
         result.setIntroConsensus(intro.score);
         result.setEndingConsensus(ending.score);
+        result.setConsensusPercent(overallConsensusPercent(result));
         AnalysisService.LiveProgress progress = analysisService.getLiveProgress(season.getSeasonGuid());
         if (progress != null) {
             result.setProgressStage(progress.stage());
@@ -351,9 +390,24 @@ public class AutoSkipService {
         return new Consensus(median, round3(score), score >= config.getConsensusThreshold());
     }
 
-    private void applySuggestion(AutoSkipModels.SeasonSuggestion suggestion, boolean automatic) {
+    static int overallConsensusPercent(AutoSkipModels.SeasonSuggestion suggestion) {
+        double score = Math.max(suggestion.getIntroConsensus(), suggestion.getEndingConsensus());
+        return (int) Math.round(Math.max(0, Math.min(1, score)) * 100);
+    }
+
+    static boolean isBulkEligible(AutoSkipModels.SeasonSuggestion suggestion, int minimumPercent) {
+        boolean completed = "COMPLETED".equals(suggestion.getAnalysisStatus())
+                || "PARTIAL_SUCCESS".equals(suggestion.getAnalysisStatus());
+        boolean hasSuggestion = suggestion.getSkipOpening() > 0 || suggestion.getSkipEnding() > 0;
+        return completed && hasSuggestion && suggestion.getConsensusPercent() >= minimumPercent;
+    }
+
+    private boolean applySuggestion(AutoSkipModels.SeasonSuggestion suggestion, boolean automatic) {
+        return applySuggestion(suggestion, automatic, freshToken());
+    }
+
+    private boolean applySuggestion(AutoSkipModels.SeasonSuggestion suggestion, boolean automatic, String token) {
         AutoSkipConfig config = configStore.current();
-        String token = freshToken();
         List<EpisodeSegment> segments = episodeSegmentMapper.selectList(
                 new QueryWrapper<EpisodeSegment>().eq("season_guid", suggestion.getSeasonGuid()).orderByAsc("episode_number"));
         String episodeGuid = segments.stream().map(EpisodeSegment::getGuid).filter(Objects::nonNull)
@@ -363,15 +417,16 @@ public class AutoSkipService {
         int ending = current.ending > 0 && !config.isOverwriteExisting() ? current.ending : suggestion.getSkipEnding();
         if (opening == current.opening && ending == current.ending) {
             applyStatuses.put(suggestion.getSeasonGuid(), "已有设置，未覆盖");
-            return;
+            return false;
         }
         if (opening <= 0 && ending <= 0) {
             applyStatuses.put(suggestion.getSeasonGuid(), "没有可写入的可信结果");
-            return;
+            return false;
         }
         fnMediaClient.setSkipConfig(config.getBaseUrl(), token, suggestion.getSeasonGuid(), opening, ending);
         applyStatuses.put(suggestion.getSeasonGuid(), (automatic ? "已自动应用：" : "已应用：")
                 + "片头 " + opening + " 秒，片尾 " + ending + " 秒");
+        return true;
     }
 
     private CurrentConfig currentConfig(String baseUrl, String token, String episodeGuid) {
